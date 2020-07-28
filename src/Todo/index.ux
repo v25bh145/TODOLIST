@@ -1,0 +1,999 @@
+<!--
+  - @author: 郭钰鹏 天津大学 智能与计算学部 2019级
+  - @TODO:
+    - 1. 修改页面的初始化状态设置 <-title的技术问题，在modifyTodoList方法中初始化值之后在页面内并没有成功显示出来(显示的还是默认值)
+    - 2. 有时会有bug，方法全部失效(可能是框架本身的加载问题？概率很小很小很小很小......)
+    - 3. 待办，进行中页面 以完成时间的顺序(年份-月份-日期-小时-分钟的lsd顺序)排列，已完成页面 以栈的方式排列
+    - 4. 进行中页面里，doing状态显示和完成功能键的UI设计不太好(?)
+    - 5. 填写表单的页面中可以添加一项开始时间，以便于设置日历事件(问题在于UI显示，挤不下了)
+    - 6. H-UI中的tab会报错，查清楚是什么错误(不影响程序运行)
+-->
+
+<import name="swipe-action" src="../Common/ui/h-ui/feedback/c_swipe_action.ux"></import>
+<import name="tab" src="../Common/ui/h-ui/navigation/c_tab.ux"></import>
+<!--h-switch发现bug --已经解决:animation-fill-mode: forwards;-->
+<import name="h-switch" src="../Common/ui/h-ui/form/c_switch.ux"></import>
+<import name="form" src="../Common/ui/h-ui/form/c_form.ux"></import>
+<import name="date-time" src="../Common/ui/h-ui/form/c_date_time.ux"></import>
+
+<template>
+  <div class="todo-page">
+    <div class="tab-full">
+      <tab data="{{tabList}}" item-width="213.33" hex-color="rgba(0, 0, 0, 0.8)">
+        <!--待办-->
+        <div class="container">
+          <!--test>
+          <text style="width: 500px;">{{test}}</text-->
+          <list class="todo-list" if="{{!refresh}}">
+              <list-item type="none">待办</list-item>
+              <block for="{{todoList}}">
+                  <list-item type="todo-item" class="{{todoItemClassName}} {{$item.isDeleting}} {{$item.isTouching}}" if="$item.status === 0" >
+                    <div class="item-title {{delEffect($item.isDeleting)}}" onclick="{{modifyTodoList($item)}}" ontouchstart="{{touchMethod($item)}}" ontouchend="{{touchMethod($item)}}">
+                      <text>{{$item.text}}</text>
+                    </div>
+                    <div class="item-hr-align {{delEffect($item.isDeleting)}}"></div>
+
+                    <image src="../Common/time.png" onclick="{{modifyTodoList($item)}}" ontouchstart="{{touchMethod($item)}}" ontouchend="{{touchMethod($item)}}" class="{{delEffect($item.isDeleting)}}" style="width: 40px; height: 40px;" />
+                    <div onclick="{{modifyTodoList($item)}}" ontouchstart="{{touchMethod($item)}}" ontouchend="{{touchMethod($item)}}" class="item-datetime {{delEffect($item.isDeleting)}}">
+                      <div class="item-time">
+                        <text class="font30">{{timeToString($item.endDatetime)}}</text>
+                      </div>
+                      <div class="item-date">
+                        <text class="font20">{{dateToString($item.endDatetime)}}</text>
+                      </div>
+                    </div>
+                    <div class="item-hr-align {{delEffect($item.isDeleting)}}"></div>
+                    <!--添加功能：去做 / 删除-->
+                    <div onclick="{{nowDoing($item)}}" class="{{delEffect($item.isDeleting)}}">
+                      <image src="../Common/todo.png" style="width: 40px; height: 40px;" />
+                      <text style="font-size: 20px;">现在去做</text>
+                    </div>
+                    <div class="item-hr-align {{delEffect($item.isDeleting)}}"></div>
+                    <image class="{{delClass($item.isDeleting)}}" src="../Common/delete.png" onclick="{{toDeleteTodoList($item)}}" style="width: 40px; height: 40px; left: 10px;" />
+                    <image class="{{cancelDelClass($item.isDeleting)}}" src="../Common/cancel-del.png" onclick="{{cancelDeleteTodoList($item)}}" style="width: 40px; height: 40px; left: 150px;" />
+                    <!--废弃功能：主页提醒  原因：放不下()-->
+                    <!--image src="../Common/notice.png" style="width: 40px; height: 40px;" />
+                    <div class="item-switch">
+                      <h-switch params="{{$item.notice}}" id="selected" 
+                      title="none" align-right="true" inactive-text="" 
+                      active-text="" active-type="primary" 
+                      onclick="notice($idx, $item)" style="width = 50px;"></h-switch>
+                    </div-->
+                  </list-item>
+                  <list-item type="item-hr-jus" class="item-hr-jus" if="$item.status === 0"></list-item>
+              </block>
+              <list-item type="todo-item" class="todo-item"></list-item>
+          </list>
+        </div>
+        <!--进行中-->
+        <div class="container">
+          <list class="todo-list" if="{{!refresh}}">
+              <list-item type="none">进行中</list-item>
+              <block for="{{todoList}}">
+                  <list-item type="todo-item" class="todo-item" if="$item.status === 1">
+                      <div class="item-title">
+                        <text>{{$item.text}}</text>
+                      </div>
+                      <div class="item-hr-align"></div>
+                      <image src="../Common/time.png" style="width: 40px; height: 40px;" />
+                      <div class="item-datetime">
+                        <div class="item-time">
+                          <text class="font30">{{timeToString($item.endDatetime)}}</text>
+                        </div>
+                        <div class="item-date">
+                          <text class="font20">{{dateToString($item.endDatetime)}}</text>
+                        </div>
+                      </div>
+                      <div class="item-hr-align"></div>
+                      <image src="../Common/doing.png" style="width: 40px; height: 40px;" />
+                      <div class="item-word">
+                        <text class="item-doing">doing</text>
+                      </div>
+                      <div class="item-hr-align"></div>
+                      <image src="../Common/complete.png" onclick="{{completeTodo($item)}}" style="width: 40px; height: 40px; left: 10px;" />
+                  </list-item>
+                  <list-item type="item-hr-jus" class="item-hr-jus" if="$item.status === 1"></list-item>
+              </block>
+              <list-item type="todo-item" class="todo-item"></list-item>
+          </list>
+        </div>
+        <!--已完成-->
+        <div class="container">
+          <list class="todo-list" if="{{!refresh}}">
+              <list-item type="none">已完成</list-item>
+              <block for="{{todoList}}">
+                  <list-item type="todo-item" class="todo-item {{$item.isDeleting}}" if="$item.status === 2">
+                      <div class="item-title {{delEffect($item.isDeleting)}}">
+                        <text>{{$item.text}}</text>
+                      </div>
+                      <div class="item-hr-align {{delEffect($item.isDeleting)}}"></div>
+                      <image src="../Common/time.png" class="{{delEffect($item.isDeleting)}}" style="width: 40px; height: 40px;" />
+                      <div class="item-datetime {{delEffect($item.isDeleting)}}">
+                        <div class="item-time">
+                          <text class="font30">{{timeToString($item.startDatetime)}}</text>
+                        </div>
+                        <div class="item-date">
+                          <text class="font20">{{dateToString($item.startDatetime)}}</text>
+                        </div>
+                      </div>
+                      <text class="{{delEffect($item.isDeleting)}}" style="font-size: 30px;">至</text>
+                      <div class="item-datetime {{delEffect($item.isDeleting)}}">
+                        <div class="item-time">
+                          <text class="font30">{{timeToString($item.endDatetime)}}</text>
+                        </div>
+                        <div class="item-date">
+                          <text class="font20">{{dateToString($item.endDatetime)}}</text>
+                        </div>
+                      </div>
+                      <!--删除 原因：放不下！
+                      <image src="../Common/done.png" style="width: 40px; height: 40px;" />
+                      <div class="item-word">
+                        <text class="item-done">done</text>
+                      </div-->
+                      <div class="item-hr-align {{delEffect($item.isDeleting)}}"></div>
+                      <image class="{{delClass($item.isDeleting)}}" src="../Common/delete.png" onclick="{{toDeleteTodoList($item)}}" style="width: 40px; height: 40px; left: 10px;" />
+                      <image class="{{cancelDelClass($item.isDeleting)}}" src="../Common/cancel-del.png" onclick="{{cancelDeleteTodoList($item)}}" style="width: 40px; height: 40px; left: 150px;" />
+                  </list-item>
+                  <list-item type="item-hr-jus" class="item-hr-jus" if="$item.status === 2"></list-item>
+              </block>
+              <list-item type="todo-item" class="todo-item"></list-item>
+          </list>
+        </div>
+      </tab>
+    </div>
+    <!--添加按钮 fixed-->
+    <div class="list-add">
+      <image class="list-add-btn {{addBtnOpacity}}" src="../Common/add.png" onclick="addDisplay" if="{{!isAdding}}" />
+    </div>
+    <!--添加todo-->
+    <div if="{{isAdding}}" class="add-full">
+      <div class="add-main">
+        <form>
+          <div style="height: 50px"></div>
+          <text>标题</text>
+          <!--依靠onchange事件实现了类似Vue.js中响应式的页面(有点小骄傲awa)-->
+          <input class="input-text" value="{{record.text}}" onchange="updRecordText" type="text" placeholder="input sth..." />
+          <div class="input-text-hr"></div>
+          <div class="del-title-btn">
+            <image src="../Common/del-title.png" style="width=40px; height=40px;" onclick="deleteText" />
+          </div>
+          <div class="voice-btn" if="{{!record.isRecording}}">
+            <image src="../Common/start-recording.png" style="width=45px; height=45px;" onclick="startRecording" />
+          </div>
+          <div class="voice-btn" if="{{record.isRecording}}">
+            <image src="../Common/end-recording.png" style="width=45px; height=45px;" onclick="endRecording" />
+          </div>
+          <div class="form-hr"></div>
+          <text>选择完成时间</text>
+          <date-time id="formDatetime" params="{{tmpInput}}" value="{{nowTimeToString()}}" title="none" no-border="true"></date-time>
+          <div class="form-hr"></div>
+          <text>提醒</text>
+          <h-switch id="formNotice" params="{{tmpInput}}"
+            title="none" inactive-text="关" inactive-type="info"
+            active-text="开" active-type="primary" no-border="true" ></h-switch>
+          <div style="height: 80px;" if={{!tmpInput.error}}></div>
+          <div class="form-error" if={{tmpInput.error}}>
+            <image src="../Common/error.png" style="height: 60px; width: 60px;" />
+            <text style="color: red; opacity: 0.7;">{{tmpInput.errorDesp}}</text>
+          </div>
+          <div class="form-btn">
+            <!--TODO: 取消输入，初始化输入数据-->
+            <div class="btn-cancel" onclick="cancelInput">
+              <image src="../Common/cancel.png" style="width: 100px; height: 100px;" />
+            </div>
+            <div class="btn-hr"></div>
+            <!--TODO: 校验数据 提交数据-->
+            <div class="btn-submit" onclick="submitInput">
+              <image src="../Common/submit.png" style="width: 100px; height: 100px;" />
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+  //在设置setTimeOut时，不要把触发的毫秒掐的刚刚好，由于函数的问题，触发的时间要比设置的值早一些
+import asr from '@service.asr';
+import storage from '@system.storage';
+import alarm from '@system.alarm';
+import calendar from '@system.calendar';
+export default {
+  data: {
+    tabList:["待办","进行中","已完成"],
+    todoList:[
+      {//格式举例 isDeleting与isTouching为暂时属性，不会存入存储中
+        idx: 1,
+        text: "标题1",
+        startDatetime: "2020-07-23 21:38",
+        endDatetime: "2020-07-23 21:38",
+        status: 0,
+        isNotice: false,
+        isDeleting: "",
+        isTouching: ""
+      }
+    ],
+    isAdding: false,
+    tmpInput: {
+      nowCount: 0,//nowCount ==0 : 创建页面 nowCount != 0 : 修改页面，nowCount = 修改的todoId
+      formDatetime: "",
+      formNotice: false,
+      error: false,
+      errorDesp: ""
+    },
+    record:{
+      isRecording: false,
+      action: "",
+      text: ""
+    },
+    addBtnOpacity: "list-add-btn-appear",
+    refresh: false,//用于刷新todoList(在增删改todoList数组时使用)
+    todoItemClassName: "todo-item",//用于todoList加载的动画
+    //just for test
+    //test: ""
+  },
+  computed:{
+    //用于响应式更新Text的实现
+    inputText(){
+      return this.record.text;
+    }
+  },
+  //测试用
+  clearTodoList() {
+    storage.set({
+      key: "listCount",
+      value: 0
+    });
+  },
+  //初始化，从存储加载todoList
+  initTodoList() {
+    var that = this;
+    var listCount = 0;
+    that.todoList = [];
+    storage.get({
+      key: "listCount",
+      success: function(data) {
+        //在storage.get()后面不应继续执行代码：get的success是异步执行的
+        listCount = parseInt(data);
+        for(var i = 1; i <= listCount; i++){
+          storage.get({
+            key: i,
+            success: function(todoData) {
+              todoData = JSON.parse(todoData);
+              that.todoList.push({
+                idx: todoData.idx,
+                text: todoData.text,
+                startDatetime: todoData.startDatetime,
+                endDatetime: todoData.endDatetime,
+                status: todoData.status,
+                isNotice: todoData.isNotice,
+                isDeleting: false,
+                isTouching: ""
+              });
+              that.updateTodoList();
+            }
+          })
+        }
+      },
+      fail: function(data, code) {
+        listCount = 0;
+      }
+    });
+  },
+  //重新加载list的方法居然被自己找出来了！！！！
+  updateTodoList: function() {
+    var that = this;
+    that.refresh = true;
+    setTimeout(function() {
+      that.refresh = false;
+    }, 500);
+    that.todoItemClassName = "todo-item todo-item-appear";
+    setTimeout(function() {
+      that.todoItemClassName = "todo-item";
+    }, 1500);
+  },
+  //修改单个todoList
+  //问题/缺陷：初始化值不成功
+  modifyTodoList: function(item) {
+    var that = this;
+    //bug: 标题需要重新输入
+    /*
+    that.record.text = item.title;
+    that.tmpInput.formNotice = item.isNotice;
+    that.tmpInput.formDatetime = item.endDatetime;
+    */
+    that.tmpInput.nowCount = item.idx;
+    that.addBtnOpacity = "list-add-btn-disappear";
+    that.isAdding = true;
+    that.isAdding = false;
+    setTimeout(() => {that.isAdding = true;}, 700);
+  },
+  //"现在去做" 按钮
+  nowDoing: function(item) {
+    var that = this;
+    var modifiedValue = {
+      idx: item.idx,
+      text: item.text,
+      endDatetime: item.endDatetime,
+      startDatetime: that.nowTimeToString(),
+      status: 1,
+      isNotice: item.isNotice,
+    };
+    storage.set({
+      key: item.idx,
+      value: modifiedValue,
+      success: function(data) {
+        //更新todoList
+        that.todoList[item.idx - 1] = {
+          idx: item.idx,
+          text: item.text,
+          endDatetime: item.endDatetime,
+          startDatetime: that.nowTimeToString(),
+          status: 1,
+          isNotice: item.isNotice,
+          isDeleting: false,
+          isTouching: ""
+        };
+        that.updateTodoList();
+      }
+    })
+  },
+  //删除 * 2 (软删除)
+  deleteTodoList: function(item) {
+    var that = this;
+    var modifiedValue = {
+      idx: item.idx,
+      text: item.text,
+      endDatetime: item.endDatetime,
+      startDatetime: item.startDatetime,
+      status: 3,
+      isNotice: item.isNotice
+    }
+    storage.set({
+      key: item.idx,
+      value: modifiedValue,
+      success: function(data) {
+        //更新todoList
+        that.todoList[item.idx - 1] = {
+          idx: item.idx,
+          text: item.text,
+          endDatetime: item.endDatetime,
+          startDatetime: item.startDatetime,
+          status: 3,
+          isNotice: item.isNotice,
+          isDeleting: false,
+          isTouching: ""
+        };
+        that.updateTodoList();
+      }
+    })
+  },
+  //确认删除 * 1
+  toDeleteTodoList: function(item) {//准备删除，触发此函数删除页面出现,再触发一下删除页面消失
+    if(item.isDeleting == "todo-item-del-false" || item.isDeleting == ""){
+      item.isDeleting = "todo-item-del-true";
+    }
+    else{
+      this.deleteTodoList(item);
+      item.isDeleting = "todo-item-del-false";
+      //修复了跳转到其他页面再回来动画错误显示的bug
+      setTimeout(function() {item.isDeleting = "";}, 500);
+    }
+  },
+  //取消删除
+  cancelDeleteTodoList: function(item) {
+    //取消删除之后会有刷新一样的效果，是因为todo-item类里面的动画定义
+    item.isDeleting = "todo-item-del-false";
+    //修复了跳转到其他页面再回来动画错误显示的bug
+    setTimeout(function() {item.isDeleting = "";}, 500);
+  },
+  //关于删除动画的方法 删除键的位移
+  delClass: function(str) {
+    if(str == "") return "";//初始化
+    else if(str == "todo-item-del-false") return "del-btn-origin";
+    else return "del-btn-deleting";
+  },
+  //关于删除动画的方法 取消删除键的位移
+  cancelDelClass: function(str) {
+    if(str == "") return "";//初始化
+    else if(str == "todo-item-del-false") return "calcel-del-btn-origin";
+    else return "calcel-del-btn-deleting";
+  },
+  //关于删除动画的方法 关于todoList背景颜色与透明度
+  delEffect: function(str) {
+    if(str == "") return "";//初始化
+    else if(str == "todo-item-del-false") return "del-effect-false";
+    else return "del-effect-true";
+  },
+  //有关触摸的方法(前提，页面不是"确认删除"状态)
+  touchMethod: function(item) {
+    //this.test = item.isTouching;
+    if(item.isDeleting == false) {
+      if(item.isTouching == "") 
+        item.isTouching = "todo-item-touching";
+      else if(item.isTouching == "todo-item-touching"){
+        item.isTouching = "todo-item-touched";
+        setTimeout(function() {item.isTouching = ""}, 150);
+      }
+      else if(item.isTouching == "todo-item-touched") 
+        item.isTouching = "todo-item-touching";
+    }
+  },
+  //"完成" 按钮
+  completeTodo: function(item) {
+    var that = this;
+    var modifiedValue = {
+      idx: item.idx,
+      text: item.text,
+      endDatetime: that.nowTimeToString(),
+      startDatetime: item.startDatetime,
+      status: 2,
+      isNotice: item.isNotice
+    };
+    storage.set({
+      key: item.idx,
+      value: modifiedValue,
+      success: function(data) {
+        //更新todoList
+        that.todoList[item.idx - 1] = {
+          idx: item.idx,
+          text: item.text,
+          endDatetime: that.nowTimeToString(),
+          startDatetime: item.startDatetime,
+          status: 2,
+          isNotice: item.isNotice,
+          isDeleting: false,
+          isTouching: ""
+        };
+        that.updateTodoList();
+      }
+    })
+  },
+  //将datetime字符串中的时间提取出来
+  timeToString: function(date) {
+    return date.toString().substring(10, 16);
+  },
+   //将datetime字符串中的日期提取出来
+  dateToString: function(date) {
+    return date.toString().substring(0, 10);
+  },
+  //返回一个对象的JSON形式
+  stringfy: function(obj) {
+    return JSON.stringify(obj);
+  },
+  //"添加"按钮
+  addDisplay: function() {
+    this.addBtnOpacity = "list-add-btn-disappear";
+    setTimeout(() => {this.isAdding = true;}, 500);
+  },
+  //事件，加载页面时(执行初始化todoList与语音输入功能)
+  onInit: function() {
+    //this.clearTodoList();
+    //加载列表
+    this.initTodoList();
+    // 定义 that 代理 this，保存当前作用域  
+    let that = this.record;
+    that.text = '';
+    // asr 模块初始化
+    asr.init({
+      // 初始化成功后的回调函数
+      success: function() {
+        that.action = 'init success';
+      },
+      // 初始化失败后的回调函数
+      fail: function(data, code) {
+        that.action = `init fail, code=${code}, data=${data}`;
+      }
+    })
+    // 注册“部分识别”的响应函数，会在一次语音识别期间（asr.start 到 asr.stop 期间）被多次调用
+    asr.onpartialresult = ({ result }) => {
+      that.text = `${result}`;
+    }
+    // 注册“语音识别停止”的响应函数，在一次语音识别完成后（asr.stop 时）被调用
+    asr.oncompleteresult = ({ result }) => {
+      that.text = `${result.match(/\[(.*)\]/)[1]}`;
+    }
+    // 注册语音识别期间出现错误的响应函数，在出错后被调用
+    asr.onerror = (error) => {
+      that.text = `onerror: ${error}`;
+    }
+  },
+  //事件，摧毁页面时(关闭语音输入功能)
+  onDestroy() {
+    // 关闭语音识别功能，重新开始的话需要重新调用 asr.init
+    let that = this.record;
+    asr.close({
+      success: function() {
+        that.action = 'close success';
+      },
+      fail: function(data, code) {
+        that.action = `close fail, code=${code}, data=${data}`;
+      }
+    })
+  },
+  //实现响应时更新text的事件
+  updRecordText(e){
+    this.record.text = e.value;
+  },
+  //清空text
+  deleteText: function() {
+    this.record.text = '';
+  },
+  //开始录音
+  startRecording: function() {
+    this.record.isRecording = true;
+    let that = this.record;
+    // 开始一次语音识别
+    that.text = '';
+    asr.start({
+      success: function() {
+        that.action = 'start success';
+      },
+      fail: function(data, code) {
+        that.action = `start fail, code=${code}, data=${data}`;
+      }
+    })
+  },
+  //结束录音
+  endRecording: function() {
+    let that = this.record;
+    // 停止当前语音识别
+    asr.stop({
+      success: function() {
+        that.action = 'stop success';
+      },
+      fail: function(data, code) {
+        that.action = `stop fail, code=${code}, data=${data}`;
+      }
+    })
+    that.isRecording = false;
+  },
+  //将现在的时间以字符串形式返回("2020-7-28 15:35")
+  nowTimeToString: function() {
+    var time = new Date();
+    var year = time.getFullYear();
+    var month = time.getMonth() + 1;
+    var date = time.getDate();
+    var hour = time.getHours();
+    var minute = time.getMinutes();
+    if(month >= 1 && month <= 9) month = "0" + month;
+    if(date >= 1 && date <= 9) date = "0" + date;
+    //修复：hour 和 minute 是以0起步的...多谢了2020-7-28的下午五点整......
+    if(hour >= 0 && hour <= 9) hour = "0" + hour;
+    if(minute >= 0 && minute <= 9) minute = "0" + minute;
+    var datetimeString = year + "-" + month + "-" + date + " " + hour + ":" + minute;
+    return datetimeString;
+  },
+  //取消创建/修改todoList
+  cancelInput: function() {
+    this.record.text = "";
+    this.tmpInput.formDatetime = this.nowTimeToString();
+    this.tmpInput.formNotice = false;
+    this.tmpInput.error = false;
+    this.tmpInput.errorDesp = "";
+    this.tmpInput.nowCount = 0;
+    this.isAdding = false;
+    this.addBtnOpacity = "list-add-btn-appear";
+  },
+  //确认创建/修改todoList
+  submitInput: function() {
+    var that = this;
+    if(that.record.text == "") {
+      that.tmpInput.error = "true";
+      that.tmpInput.errorDesp = "请输入标题";
+    } else if(typeof(that.tmpInput.formDatetime) == "undefined" || that.tmpInput.formDatetime == "") {
+      that.tmpInput.error = "true";
+      that.tmpInput.errorDesp = "请输入时间";
+    } else {
+      var endDatetime = new Date(that.tmpInput.formDatetime);
+      var nowDatetime = new Date();
+      if(endDatetime <= nowDatetime) {
+        that.tmpInput.error = "true";
+        that.tmpInput.errorDesp = "请输入正确的日期时间";
+      }
+      else {
+        if(!that.tmpInput.nowCount) {//添加操作
+          //获取已存储的列表项数目，如果未存储则初始化键值对为0
+          var listCount = 0;
+          storage.get({
+            key: "listCount",
+            success: function(data) {
+              //在storage.get()后面不应继续执行代码：get的success是异步执行的
+              listCount = 1 + parseInt(data);
+              that.storageInput(listCount);
+            },
+            fail: function(data, code) {
+              listCount = 1;
+              that.storageInput(listCount);
+            }
+          });
+        } else {//修改操作
+          that.storageInput(that.tmpInput.nowCount);
+        }
+      }
+    }
+  },
+  //存储数据(submitInput执行成功后执行这个方法)
+  storageInput: function(listCount){
+    var that = this;
+    var text = that.record.text;
+    var endDatetime = new Date(that.tmpInput.formDatetime);
+    var nowDatetime = new Date();
+    var submitValue = {
+      idx: listCount,
+      text: that.record.text,
+      endDatetime: that.tmpInput.formDatetime,
+      startDatetime: "",
+      status: 0,
+      isNotice: that.tmpInput.formNotice,
+    };
+    if(submitValue.isNotice){
+      calendar.insert({
+          title: submitValue.text,
+          startDate: endDatetime.getTime(),
+          endDate: endDatetime.getTime()
+      });
+      /*废弃闹钟功能
+      if(endDatetime.getTime() - nowDatetime.getTime() >= 86400000){//大于一天，设置日历
+        calendar.insert({
+          title: submitValue.text,
+          startDate: endDatetime.getTime(),
+          endDate: endDatetime.getTime()
+        })
+      } else {//可以设置闹钟
+        alarm.setAlarm({
+          vibrate: true,
+          hour: endDatetime.getHours(),
+          minute: endDatetime.getMinutes(),
+          message: submitValue.text,
+          ringtone: "../Common/music/alarm.mp3",
+          success: function() {
+            that.test = "success!";
+          },
+          fail: function(data, code) {
+            that.test = "data: " + data + " code: " + code;
+          }
+        })
+      }*/
+    }
+    //存储输入值
+    storage.set({
+      key: listCount,
+      value: submitValue,
+      success: function(data) {
+        //更新列表项数目
+        storage.set({
+          key: "listCount",
+          value: listCount,
+          success: function(data) {
+            //更新todoList
+            that.todoList[listCount - 1] = {
+              idx: listCount,
+              text: that.record.text,
+              endDatetime: that.tmpInput.formDatetime,
+              startDatetime: "",
+              status: 0,
+              isNotice: that.tmpInput.formNotice,
+              isDeleting: false,
+              isTouching: ""
+            };
+            that.updateTodoList();
+            that.record.text = "";
+            that.tmpInput.formDatetime = that.nowTimeToString();
+            that.tmpInput.formNotice = false;
+            that.tmpInput.error = false;
+            that.tmpInput.errorDesp = "";
+            that.tmpInput.nowCount = 0;
+            that.isAdding = false;
+            that.addBtnOpacity = "list-add-btn-appear";
+          }
+        });
+      }
+    });
+  }
+}
+</script>
+
+<style lang="less">
+  @import '../Common/styles/container.less';
+  @import '../Common/styles/fontsize.less';
+  .tab-full{
+    border-left-width: 15px;
+    border-right-width: 15px;
+    border-color: rgba(0, 0, 0, 0);
+  }
+  .todo-item{
+    height: 150px;
+    align-items: center;
+    &-appear{
+      animation-name: todoListAppear;
+      animation-duration: 500ms;
+      animation-fill-mode: forwards;
+      opacity: 1;
+    }
+    &-del-true{
+      animation-name: todoListDeleteTrue;
+      animation-duration: 300ms;
+      animation-fill-mode: forwards;
+      background-color: rgba(34, 34, 34, 0.4);
+    }
+    &-del-false{
+      animation-name: todoListDeleteFalse;
+      animation-duration: 300ms;
+      animation-fill-mode: forwards;
+      background-color: rgba(0, 0, 0, 0);
+    }
+    &-touching{
+      animation-name: todoListTouching;
+      animation-duration: 100ms;
+      animation-fill-mode: forwards;
+      background-color: #808080;
+    }
+    &-touched{
+      animation-name: todoListTouched;
+      animation-duration: 100ms;
+      animation-fill-mode: forwards;
+      background-color: #ffffff;
+    }
+  }
+  @keyframes todoListAppear {
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+  @keyframes todoListDeleteTrue {
+    0% {
+      background-color: rgba(0, 0, 0, 0);
+    }
+    100% {
+      background-color: rgba(34, 34, 34, 0.4);
+    }
+  }
+  @keyframes todoListDeleteFalse {
+    0% {
+      background-color: rgba(34, 34, 34, 0.4);
+    }
+    100% {
+      background-color: rgba(0, 0, 0, 0);
+    }
+  }
+  @keyframes todoListTouching {
+    from{
+      background-color: #ffffff;
+    }
+    to{
+      background-color: #808080;
+    }
+  }
+  @keyframes todoListTouched {
+    from{
+      background-color: #808080;
+    }
+    to{
+      background-color: #ffffff;
+    }
+  }
+  .del-effect{
+    &-true{
+      animation-name: delEffectTrue;
+      animation-duration: 300ms;
+      animation-fill-mode: forwards;
+      opacity: 0.1;
+    }
+    &-false{
+      animation-name: delEffectFalse;
+      animation-duration: 300ms;
+      animation-fill-mode: forwards;
+      opacity: 1;
+    }
+  }
+  @keyframes delEffectTrue {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0.1;
+    }
+  }
+  @keyframes delEffectFalse {
+    from {
+      opacity: 0.1;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  .del-btn{
+    transform: translateX(0px);
+    &-origin{
+      animation-name: delBtnOrigin;
+      animation-duration: 300ms;
+      animation-fill-mode: forwards;
+      transform: translateX(0px);
+    }
+    &-deleting{
+      animation-name: delBtnDeleting;
+      animation-duration: 300ms;
+      animation-fill-mode: forwards;
+      transform: translateX(-380px);
+    }
+  }
+  @keyframes delBtnDeleting{
+      from {
+        transform: translateX(0px);
+      }
+      to {
+        transform: translateX(-380px);
+      }
+  }
+  @keyframes delBtnOrigin{
+    from {
+      transform: translateX(-380px);
+    }
+    to {
+      transform: translateX(0px);
+    }
+  }
+  .calcel-del-btn{
+    transform: translateX(0px);
+    &-origin{
+      animation-name: delBtnOrigin;
+      animation-duration: 300ms;
+      animation-fill-mode: forwards;
+      transform: translateX(0px);
+    }
+    &-deleting{
+      animation-name: delBtnDeleting;
+      animation-duration: 300ms;
+      animation-fill-mode: forwards;
+      transform: translateX(-380px);
+    }
+  }
+  .item-title{
+    width: 250px;
+  }
+  .item-datetime{
+    flex-direction: column;
+    align-items: center;
+    width: 120px;
+  }
+  .item-switch{
+    width: 225px;
+  }
+  .item-word{
+    width: 80px;
+    left: 0px;
+  }
+  .item-doing{
+    color:green;
+    font-size: 30px;
+  }
+  .item-done{
+    color:rgb(85, 23, 23);
+    font-size: 30px;
+  }
+  .item-hr-align{
+    width: 0px;
+    height: 50%;
+    border-left: 2px solid rgba(214, 215, 216, 1);
+  }
+  .item-hr-jus{
+    width: 600px;
+    height: 0px;
+    border-top: 2px solid rgba(214, 215, 216, 1);
+  }
+  .list-add{
+    position: fixed;
+    width: 100%;
+    height: 150px;
+    justify-content: center;
+    align-items: center;
+    bottom: 50px;
+  }
+  .list-add-btn{
+    position: relative;
+    width: 90px;
+    height: 90px;
+    border-radius: 45px;
+    border: 5px solid rgb(0, 0, 0);
+    opacity: 0.8;
+    background: repeating-linear-gradient(45deg, rgba(255,0,0, 0.8),rgba(162, 0, 255, 0.8));
+    &-appear{
+      opacity: 0.8;
+    }
+    &-disappear{
+      animation-name: btnDisappear;
+      animation-duration: 500ms;
+      opacity: 0;
+    }
+  }
+  @keyframes btnDisappear {
+    from{
+      opacity: 0.8;
+    }
+    to{
+      opacity: 0;
+    }
+  }
+  .add-full{
+    position: absolute;
+    right: 0px;
+    left: 0px;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.3);
+  }
+  .add-main{
+    position: relative;
+    top: 100px;
+    left: 50px;
+    width: 540px;
+    height: 800px;
+    background-color: #2ea1ff;
+    opacity: 0.8;
+    border-radius: 50px;
+  }
+  .input-text{
+    font-size: 30px;
+  }
+  .input-text-hr{
+    top: 5px;
+    width: 100%;
+    height: 0px;
+    border-top: 2px solid rgba(214, 215, 216, 1);
+  }
+  .del-title-btn{
+    position: absolute;
+    right: 75px;
+    top: 82.5px;
+    width: 40px;
+    height: 40px;
+    opacity: 0.3;
+  }
+  .voice-btn{
+    position: absolute;
+    right: 20px;
+    top: 80px;
+    width: 45px;
+    height: 45px;
+  }
+  .form-hr{
+    height: 100px;
+  }
+  .form-error{
+    height: 80px;
+    width: 100%;
+    justify-content: center;
+  }
+  .form-btn{
+    flex-direction: row;
+    justify-content: center;
+    align-content: center;
+    height: 100px;
+  }
+  .btn-cancel{
+    width: 269px;
+    height: 100px;
+    left: 0px;
+    justify-content: center;
+    align-content: center;
+    opacity: 0.7;
+  }
+  .btn-hr{
+    width: 0px;
+    height: 100px;
+    border-left: 2px solid rgba(214, 215, 216, 1);
+  }
+  .btn-submit{
+    width: 269px;
+    height: 100px;
+    right: 0px;
+    justify-content: center;
+    align-content: center;
+    opacity: 0.7;
+  }
+</style>
