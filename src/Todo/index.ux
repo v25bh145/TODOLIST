@@ -2,12 +2,11 @@
   - @author: 郭钰鹏 天津大学 智能与计算学部 2019级
   - @TODO:
     - 1. 修改页面的初始化状态设置 <-title的技术问题，在modifyTodoList方法中初始化值之后在页面内并没有成功显示出来(显示的还是默认值)
-    - 2. 待办，进行中页面 以完成时间的顺序(年份-月份-日期-小时-分钟的lsd顺序)排列，已完成页面 以栈的方式排列
-    - 3. 进行中页面里，doing状态显示和完成功能键的UI设计不太好(?)
-    - 4. 填写表单的页面中可以添加一项开始时间，以便于设置日历事件(问题在于UI显示，挤不下了)
-    - 5. H-UI中的tab会报错，查清楚是什么错误(不影响程序运行)
-    - 6. UI太丑！(指创建页面)
-    - 7. 可以加入自然语言处理功能(目前的水平远远不足)
+    - 2. 进行中页面里，doing状态显示和完成功能键的UI设计不太好(?)
+    - 3. 填写表单的页面中可以添加一项开始时间，以便于设置日历事件(问题在于UI显示，挤不下了)
+    - 4. H-UI中的tab会报错，查清楚是什么错误(不影响程序运行)
+    - 5. UI太丑！(指创建页面)
+    - 6. 可以加入自然语言处理功能(目前的水平远远不足)
 -->
 
 <import name="swipe-action" src="../Common/ui/h-ui/feedback/c_swipe_action.ux"></import>
@@ -23,8 +22,8 @@
       <tab data="{{tabList}}" item-width="213.33" hex-color="rgba(0, 0, 0, 0.8)">
         <!--待办-->
         <div class="container">
-          <!--test>
-          <text style="width: 500px;">{{test}}</text-->
+          <!--test-->
+          <!--text style="width: 500px;">{{test}}</text-->
           <list class="todo-list" if="{{!refresh}}">
               <list-item type="none">待办</list-item>
               <block for="{{todoList}}">
@@ -204,7 +203,7 @@ export default {
   data: {
     tabList:["待办","进行中","已完成"],
     todoList:[
-      {//格式举例 isDeleting与isTouching为暂时属性，不会存入存储中
+      {//格式举例 isDeleting,isTouching与nowIdx为暂时属性，不会存入存储中
         idx: 1,
         text: "标题1",
         startDatetime: "2020-07-23 21:38",
@@ -212,12 +211,15 @@ export default {
         status: 0,
         isNotice: false,
         isDeleting: "",
-        isTouching: ""
+        isTouching: "",
+        nowIdx: 0//现在的索引
       }
     ],
+    todoListCount: 0,
     isAdding: false,
     tmpInput: {
-      nowCount: 0,//nowCount ==0 : 创建页面 nowCount != 0 : 修改页面，nowCount = 修改的todoId
+      nowCount: 0,//nowCount ==0 : 创建页面 nowCount != 0 : 修改页面，nowCount = 修改的todoId, nowObj = 修改的todoList对象
+      nowObj: {},
       formDatetime: "",
       formNotice: false,
       error: false,
@@ -235,23 +237,54 @@ export default {
     //test: ""
   },
   //测试用
-  clearTodoList() {
+  _clearTodoList() {
     storage.set({
       key: "listCount",
       value: 0
     });
   },
-  //初始化，从存储加载todoList
-  initTodoList() {
+  /**
+   * @function _insertSort 插入排序的一部分(对todoList数组),按照完成时间的顺序
+   * @param idx 要整理的索引
+   * @param end 数组的末尾(开区间)
+   * @param item 对象的引用传参，为了修改nowIdx
+   * @summary 为了对接initTodoList completeTodo storageInput方法，调整了插入排序算法的逻辑
+   * 死循环
+   *  if 不为开头 且 小于左边 => 向左移动
+   *  else if 不为结尾 且 大于右边 => 向右移动，
+   *  else 结束，退出死循环
+   */
+  _insertSort(item, end) {
+    //this.test += item.nowIdx + " " + end + "idx: " + item.idx + "\n";
+    while(true){
+      if(item.nowIdx != 0 && this._timeStringToTimeStamp(this.todoList[item.nowIdx].endDatetime) < this._timeStringToTimeStamp(this.todoList[item.nowIdx - 1].endDatetime)) {
+        this.todoList[item.nowIdx - 1].nowIdx++;
+        [this.todoList[item.nowIdx], this.todoList[item.nowIdx - 1]] = [this.todoList[item.nowIdx - 1], this.todoList[item.nowIdx]];
+        item.nowIdx--;
+        //this.test += "left\n";
+      }
+      else if(item.nowIdx != end - 1 && this._timeStringToTimeStamp(this.todoList[item.nowIdx].endDatetime) > this._timeStringToTimeStamp(this.todoList[item.nowIdx + 1].endDatetime)) {
+        this.todoList[item.nowIdx + 1].nowIdx--;
+        [this.todoList[item.nowIdx], this.todoList[item.nowIdx + 1]] = [this.todoList[item.nowIdx + 1], this.todoList[item.nowIdx]];
+        item.nowIdx++;
+        //this.test += "right\n";
+      }
+      else break;
+    }
+  },
+  //初始化，从存储加载todoList - 搭载插入排序
+  _initTodoList() {
     var that = this;
-    var listCount = 0;
+    that.todoListCount = 0;
     that.todoList = [];
+    var count = 1;
     storage.get({
       key: "listCount",
       success: function(data) {
         //在storage.get()后面不应继续执行代码：get的success是异步执行的
-        listCount = parseInt(data);
-        for(var i = 1; i <= listCount; i++){
+        that.todoListCount = parseInt(data);
+
+        for(var i = 1; i <= that.todoListCount; i++){
           storage.get({
             key: i,
             success: function(todoData) {
@@ -264,12 +297,16 @@ export default {
                 status: todoData.status,
                 isNotice: todoData.isNotice,
                 isDeleting: false,
-                isTouching: ""
+                isTouching: "",
+                nowIdx: todoData.idx - 1
               });
-              that.updateTodoList();
+              //不可以在这里直接使用插入排序 <= 异步方法
+              that._insertSort(that.todoList[count - 1], count);//搭载插入排序
+              count++;
             }
           })
         }
+        that._updateTodoList();
       },
       fail: function(data, code) {
         listCount = 0;
@@ -277,7 +314,7 @@ export default {
     });
   },
   //重新加载list的方法居然被自己找出来了！！！！
-  updateTodoList: function() {
+  _updateTodoList: function() {
     var that = this;
     that.refresh = true;
     setTimeout(function() {
@@ -299,12 +336,14 @@ export default {
     that.tmpInput.formDatetime = item.endDatetime;
     */
     that.tmpInput.nowCount = item.idx;
+    that.tmpInput.nowObj = item;
     that.addBtnOpacity = "list-add-btn-disappear";
+    /*??
     that.isAdding = true;
-    that.isAdding = false;
+    that.isAdding = false;*/
     setTimeout(() => {that.isAdding = true;}, 700);
   },
-  //"现在去做" 按钮
+  //"现在去做" 按钮 - 不用搭载插入排序<=完成时间不变
   nowDoing: function(item) {
     var that = this;
     var modifiedValue = {
@@ -313,14 +352,14 @@ export default {
       endDatetime: item.endDatetime,
       startDatetime: that.nowTimeToString(),
       status: 1,
-      isNotice: item.isNotice,
+      isNotice: item.isNotice
     };
     storage.set({
       key: item.idx,
       value: modifiedValue,
       success: function(data) {
         //更新todoList
-        that.todoList[item.idx - 1] = {
+        that.todoList[item.nowIdx] = {
           idx: item.idx,
           text: item.text,
           endDatetime: item.endDatetime,
@@ -328,13 +367,14 @@ export default {
           status: 1,
           isNotice: item.isNotice,
           isDeleting: false,
-          isTouching: ""
+          isTouching: "",
+          nowIdx: item.nowIdx
         };
-        that.updateTodoList();
+        that._updateTodoList();
       }
     })
   },
-  //删除 * 2 (软删除)
+  //删除 * 2 (软删除) - 不用搭载插入排序<=已经删除,不予显示无所谓顺序
   deleteTodoList: function(item) {
     var that = this;
     var modifiedValue = {
@@ -350,7 +390,7 @@ export default {
       value: modifiedValue,
       success: function(data) {
         //更新todoList
-        that.todoList[item.idx - 1] = {
+        that.todoList[item.nowIdx] = {
           idx: item.idx,
           text: item.text,
           endDatetime: item.endDatetime,
@@ -358,9 +398,10 @@ export default {
           status: 3,
           isNotice: item.isNotice,
           isDeleting: false,
-          isTouching: ""
+          isTouching: "",
+          nowIdx: item.nowIdx
         };
-        that.updateTodoList();
+        that._updateTodoList();
       }
     })
   },
@@ -415,7 +456,7 @@ export default {
         item.isTouching = "todo-item-touching";
     }
   },
-  //"完成" 按钮
+  //"完成" 按钮 - 搭载插入排序
   completeTodo: function(item) {
     var that = this;
     var modifiedValue = {
@@ -431,7 +472,7 @@ export default {
       value: modifiedValue,
       success: function(data) {
         //更新todoList
-        that.todoList[item.idx - 1] = {
+        that.todoList[item.nowIdx] = {
           idx: item.idx,
           text: item.text,
           endDatetime: that.nowTimeToString(),
@@ -439,9 +480,11 @@ export default {
           status: 2,
           isNotice: item.isNotice,
           isDeleting: false,
-          isTouching: ""
+          isTouching: "",
+          nowIdx: item.nowIdx
         };
-        that.updateTodoList();
+        that._insertSort(that.todoList[item.nowIdx], that.todoListCount);//搭载插入排序
+        that._updateTodoList();
       }
     })
   },
@@ -453,10 +496,6 @@ export default {
   dateToString: function(date) {
     return date.toString().substring(0, 10);
   },
-  //返回一个对象的JSON形式
-  stringfy: function(obj) {
-    return JSON.stringify(obj);
-  },
   //"添加"按钮
   addDisplay: function() {
     this.addBtnOpacity = "list-add-btn-disappear";
@@ -464,9 +503,9 @@ export default {
   },
   //事件，加载页面时(执行初始化todoList与语音输入功能)
   onInit: function() {
-    //this.clearTodoList();
+    //this._clearTodoList();
     //加载列表
-    this.initTodoList();
+    this._initTodoList();
     // 定义 that 代理 this，保存当前作用域  
     let that = this.record;
     that.text = '';
@@ -544,6 +583,11 @@ export default {
     })
     that.isRecording = false;
   },
+  //返回时间字符串对应的时间戳
+  _timeStringToTimeStamp: function(str) {
+    var date = new Date(str);
+    return date.getTime();
+  },
   //将现在的时间以字符串形式返回("2020-7-28 15:35")
   nowTimeToString: function() {
     var time = new Date();
@@ -568,6 +612,7 @@ export default {
     this.tmpInput.error = false;
     this.tmpInput.errorDesp = "";
     this.tmpInput.nowCount = 0;
+    this.tmpInput.nowObj = {};
     this.isAdding = false;
     this.addBtnOpacity = "list-add-btn-appear";
   },
@@ -596,21 +641,33 @@ export default {
             success: function(data) {
               //在storage.get()后面不应继续执行代码：get的success是异步执行的
               listCount = 1 + parseInt(data);
-              that.storageInput(listCount);
+              that.todoListCount = listCount;
+              that._storageInput(listCount, false);
             },
             fail: function(data, code) {
-              listCount = 1;
-              that.storageInput(listCount);
+              //listCount == 0，则创建一个新的键值对
+              that.test += "fail" + "\n";
+              storage.set({
+                key: "listCount",
+                value: 0,
+                success: function(data) {
+                  listCount = 1;
+                  that.todoListCount = 1;
+                  that._storageInput(listCount, false);
+                }
+              });
             }
           });
         } else {//修改操作
-          that.storageInput(that.tmpInput.nowCount);
+          that._storageInput(that.tmpInput.nowCount, true);
         }
       }
     }
   },
   //存储数据(submitInput执行成功后执行这个方法)
-  storageInput: function(listCount){
+  //flag == true: 为修改操作 flag == false: 为创建操作
+  _storageInput: function(listCount, flag){
+    //this.test += "_storageInput:" + listCount + "flag: " + flag + "\n";
     var that = this;
     var text = that.record.text;
     var endDatetime = new Date(that.tmpInput.formDatetime);
@@ -658,32 +715,60 @@ export default {
       value: submitValue,
       success: function(data) {
         //更新列表项数目
-        storage.set({
-          key: "listCount",
-          value: listCount,
-          success: function(data) {
-            //更新todoList
-            that.todoList[listCount - 1] = {
-              idx: listCount,
-              text: that.record.text,
-              endDatetime: that.tmpInput.formDatetime,
-              startDatetime: "",
-              status: 0,
-              isNotice: that.tmpInput.formNotice,
-              isDeleting: false,
-              isTouching: ""
-            };
-            that.updateTodoList();
-            that.record.text = "";
-            that.tmpInput.formDatetime = that.nowTimeToString();
-            that.tmpInput.formNotice = false;
-            that.tmpInput.error = false;
-            that.tmpInput.errorDesp = "";
-            that.tmpInput.nowCount = 0;
-            that.isAdding = false;
-            that.addBtnOpacity = "list-add-btn-appear";
-          }
-        });
+        if(!flag){
+          storage.set({
+            key: "listCount",
+            value: listCount,
+            success: function(data) {
+              //更新todoList
+              that.todoList[listCount - 1] = {
+                idx: listCount,
+                text: that.record.text,
+                endDatetime: that.tmpInput.formDatetime,
+                startDatetime: "",
+                status: 0,
+                isNotice: that.tmpInput.formNotice,
+                isDeleting: false,
+                isTouching: "",
+                nowIdx: listCount - 1
+              };
+              //that.test += "创建操作 listCount: " + listCount + "\n";
+              that._insertSort(that.todoList[listCount - 1], that.todoListCount);
+              that._updateTodoList();
+              that.record.text = "";
+              that.tmpInput.formDatetime = that.nowTimeToString();
+              that.tmpInput.formNotice = false;
+              that.tmpInput.error = false;
+              that.tmpInput.errorDesp = "";
+              that.tmpInput.nowCount = 0;
+              that.isAdding = false;
+              that.addBtnOpacity = "list-add-btn-appear";
+            }
+          });
+        } else {//修改操作,直接更新todoList
+          that.todoList[that.tmpInput.nowObj.nowIdx] = {
+            idx: listCount,
+            text: that.record.text,
+            endDatetime: that.tmpInput.formDatetime,
+            startDatetime: "",
+            status: 0,
+            isNotice: that.tmpInput.formNotice,
+            isDeleting: false,
+            isTouching: "",
+            nowIdx: that.tmpInput.nowObj.nowIdx
+          };
+          //that.test += "修改操作 listCount: " + listCount + " nowIdx: " + that.tmpInput.nowObj.nowIdx + "\n";
+          that._insertSort(that.todoList[that.tmpInput.nowObj.nowIdx], that.todoListCount);
+          that._updateTodoList();
+          that.record.text = "";
+          that.tmpInput.formDatetime = that.nowTimeToString();
+          that.tmpInput.formNotice = false;
+          that.tmpInput.error = false;
+          that.tmpInput.errorDesp = "";
+          that.tmpInput.nowCount = 0;
+          that.isAdding = false;
+          that.addBtnOpacity = "list-add-btn-appear";
+        }
       }
     });
   }
